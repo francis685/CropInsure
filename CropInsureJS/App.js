@@ -1,13 +1,12 @@
-import React from 'react';
+import React, { useEffect } from 'react'; // 🟢 Added useEffect
+import { Image } from 'react-native'; // 🟢 Added Image
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-// 🟢 1. Global Context Providers (The Brains of your App)
 import { LanguageProvider } from './src/context/LanguageContext';
 import { AgriProvider } from './src/context/AgriContext'; 
 
-// 🟢 2. All Screens
 import SplashScreen from './src/screens/SplashScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -20,12 +19,25 @@ import NotificationsScreen from './src/screens/NotificationsScreen';
 import LoanApplicationScreen from './src/screens/LoanApplicationScreen';
 import TasksScreen from './src/screens/TasksScreen';
 import AgriScoreScreen from './src/screens/AgriScoreScreen';
+import GeoFenceAuditScreen from './src/screens/GeoFenceAuditScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function App() {
+  
+  // 🟢 THE FIX: Pre-fetch images so they load instantly with zero lag
+  useEffect(() => {
+    const imagesToCache = [
+      'https://images.unsplash.com/photo-1500382017468-9049fed747ef?ixlib=rb-4.0.3&auto=format&fit=crop&w=1080&q=80',
+      'https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=800&auto=format&fit=crop'
+    ];
+    
+    // This tells the phone to download the images quietly in the background
+    // the moment the app opens, so they are ready when the user navigates.
+    imagesToCache.forEach(url => Image.prefetch(url));
+  }, []);
+
   return (
-    // 🟢 3. The AgriProvider tracks the crop stages and score everywhere!
     <AgriProvider>
       <LanguageProvider>
         <NavigationContainer>
@@ -45,7 +57,8 @@ export default function App() {
             <Stack.Screen name="Notifications" component={NotificationsScreen} />
             <Stack.Screen name="LoanApplication" component={LoanApplicationScreen} />
             <Stack.Screen name="Tasks" component={TasksScreen} />
-            <Stack.Screen name="AgriScore" component={AgriScoreScreen} /> 
+            <Stack.Screen name="AgriScore" component={AgriScoreScreen} />
+            <Stack.Screen name="GeoFenceAudit" component={GeoFenceAuditScreen} />
           </Stack.Navigator>
         </NavigationContainer>
       </LanguageProvider>

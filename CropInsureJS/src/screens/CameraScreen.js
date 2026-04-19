@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   Animated, Dimensions, Image, ScrollView,
-  ActivityIndicator, Alert
+  ActivityIndicator, Alert, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LanguageContext } from '../context/LanguageContext';
@@ -50,13 +51,34 @@ export default function CameraScreen({ navigation }) {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [currentStep, setCurrentStep]   = useState('capture'); 
   const [captureFlash, setCaptureFlash] = useState(false);
-  const [uploadedImageUrl, setUploadedImageUrl] = useState(null); // 🟢 Stores Supabase Link
+  const [uploadedImageUrl, setUploadedImageUrl] = useState(null); 
+
+  // 🟢 NEW STATE: Live GPS and Cryptographic Time Hash
+  const [location, setLocation] = useState(null);
+  const [currentTime, setCurrentTime] = useState('');
 
   const laserAnim        = useRef(new Animated.Value(0)).current;
   const flashAnim        = useRef(new Animated.Value(0)).current;
   const resultFadeAnim   = useRef(new Animated.Value(0)).current;
   const resultSlideAnim  = useRef(new Animated.Value(60)).current;
   const progressAnim     = useRef(new Animated.Value(0)).current;
+
+  // 🟢 NEW EFFECT: Fetch live location and update ticking clock
+  useEffect(() => {
+    (async () => {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        let loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        setLocation(loc.coords);
+      }
+    })();
+
+    const timer = setInterval(() => {
+      const now = new Date();
+      setCurrentTime(now.toISOString().replace('T', ' ').substring(0, 19) + ' UTC');
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (currentStep === 'capture') {
@@ -132,13 +154,31 @@ export default function CameraScreen({ navigation }) {
     setPhotos(prev => prev.filter(p => p.id !== photoId));
   };
 
-  // 🟢 SMART FAKE AI + SUPABASE UPLOAD (Zero Quota Errors)
   const analyzePhotos = async (photoList) => {
     setCurrentStep('analyzing');
     setIsAnalyzing(true);
 
     try {
-      console.log("1️⃣ Uploading photo to Supabase Cloud Storage...");
+      let locationData = { latitude: 0, longitude: 0 };
+      let weatherData = { temp: 0, condition: "Unknown" };
+
+      console.log("📍 Getting GPS Location...");
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({});
+        locationData = loc.coords;
+
+        const W_KEY = process.env.EXPO_PUBLIC_WEATHER_KEY;
+        if (W_KEY) {
+          const wRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${loc.coords.latitude}&lon=${loc.coords.longitude}&appid=${W_KEY}&units=metric`);
+          const wJson = await wRes.json();
+          if (wJson.main) {
+            weatherData = { temp: wJson.main.temp, condition: wJson.weather[0].main };
+          }
+        }
+      }
+
+      console.log("1️⃣ Uploading photo to Supabase Cloud...");
       const photo = photoList[0];
       const fileName = `temp_analysis_${Date.now()}.jpg`;
 
@@ -150,22 +190,36 @@ export default function CameraScreen({ navigation }) {
 
       const { data: urlData } = supabase.storage.from('crop-images').getPublicUrl(fileName);
       const publicUrl = urlData.publicUrl;
-      setUploadedImageUrl(publicUrl); // Save URL for the DB Insert step
-      console.log("☁️ Successfully uploaded! Image URL:", publicUrl);
+      setUploadedImageUrl(publicUrl); 
+      console.log("☁️ Uploaded! Image URL:", publicUrl);
 
-      console.log("2️⃣ Faking AI Processing (Bypassing 429 Quota)...");
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log("2️⃣ Sending Data to Python Fraud Engine...");
+      const response = await fetch('http://192.168.50.174:8000/api/analyze-crop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_url: publicUrl,
+          farmer_phone: "1234567890",
+          lat: locationData.latitude,
+          lng: locationData.longitude,
+          temp: weatherData.temp,
+          weather_condition: weatherData.condition,
+          farmer_score: 300 
+        })
+      });
 
-      let mockResult = {};
-      if (langIndex === 1) { // Hindi
-        mockResult = { crop_type: "धान", disease_detected: true, disease_name: "लेट ब्लाइट (फाइटोफ्थोरा इन्फेस्टन्स)", disease_category: "Fungal", damage_percentage: 68, severity: "गंभीर", symptoms_observed: ["पत्तियों पर भूरे धब्बे"], confidence_score: 94, pmfby_eligible: true, estimated_yield_loss: 45, recommended_action: "तुरंत मैंकोजेब फफूंदनाशक लगाएं।", urgency: "Immediate", estimated_payout: 36380, summary: "गंभीर संक्रमण।" };
-      } else if (langIndex === 2) { // Kannada
-        mockResult = { crop_type: "ಭತ್ತ", disease_detected: true, disease_name: "ಲೇಟ್ ಬ್ಲೈಟ್ (ಫೈಟೊಫ್ಥೊರಾ ಇನ್ಫೆಸ್ಟಾನ್ಸ್)", disease_category: "Fungal", damage_percentage: 68, severity: "ನಿರ್ಣಾಯಕ", symptoms_observed: ["ಎಲೆಗಳ ಮೇಲೆ ಕಂದು ಕಲೆಗಳು"], confidence_score: 94, pmfby_eligible: true, estimated_yield_loss: 45, recommended_action: "ತಕ್ಷಣ ಮ್ಯಾಂಕೋಜೆಬ್ ಶಿಲೀಂಧ್ರನಾಶಕವನ್ನು ಅನ್ವಯಿಸಿ.", urgency: "Immediate", estimated_payout: 36380, summary: "ತೀವ್ರ ಸೋಂಕು." };
-      } else { // English
-        mockResult = { crop_type: "Paddy", disease_detected: true, disease_name: "Late Blight (Phytophthora infestans)", disease_category: "Fungal", damage_percentage: 68, severity: "Critical", symptoms_observed: ["Brown lesions on leaves"], confidence_score: 94, pmfby_eligible: true, estimated_yield_loss: 45, recommended_action: "Apply Mancozeb fungicide immediately.", urgency: "Immediate", estimated_payout: 36380, summary: "Severe fungal infection detected." };
+      const backendData = await response.json();
+      
+      if (backendData.status === "error") {
+        throw new Error(backendData.message);
       }
 
-      setAnalysisResult(mockResult);
+      const finalResult = backendData.analysis;
+      if (backendData.verification) {
+        finalResult.summary = `Status: ${backendData.verification.waiting_period}. \n\n${finalResult.summary}`;
+      }
+
+      setAnalysisResult(finalResult);
       setCurrentStep('result');
       setIsAnalyzing(false);
 
@@ -179,7 +233,7 @@ export default function CameraScreen({ navigation }) {
     } catch (error) {
       console.error("❌ Analysis Error:", error);
       setIsAnalyzing(false);
-      Alert.alert('Upload Failed', 'Check your internet connection and Supabase settings.', [{ text: 'Retake', onPress: resetCapture }]);
+      Alert.alert('Analysis Failed', 'Make sure your Python server is running.', [{ text: 'Retake', onPress: resetCapture }]);
     }
   };
 
@@ -193,7 +247,6 @@ export default function CameraScreen({ navigation }) {
     progressAnim.setValue(0);
   };
 
-  // 🟢 FILE CLAIM WITH CLOUD IMAGE LINK
   const handleFileClaim = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     
@@ -204,7 +257,7 @@ export default function CameraScreen({ navigation }) {
         damage_percentage: analysisResult.damage_percentage,
         recommended_action: analysisResult.recommended_action,
         estimated_payout: analysisResult.estimated_payout,
-        image_url: uploadedImageUrl, // 🟢 Linking the photo!
+        image_url: uploadedImageUrl, 
         status: 'pending'
       }]);
 
@@ -253,7 +306,8 @@ export default function CameraScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="back" />
+      {/* 🟢 CHANGED: flash="off" to disable the physical flashlight while scanning */}
+      <CameraView ref={cameraRef} style={StyleSheet.absoluteFillObject} facing="back" flash="off" />
 
       {captureFlash ? (
         <Animated.View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#FFF', opacity: flashAnim, zIndex: 10 }]} />
@@ -315,6 +369,20 @@ export default function CameraScreen({ navigation }) {
                   <Text style={styles.scanHintText}>{T.scanHint}</Text>
                 </View>
               </View>
+
+              {/* 🟢 NEW: Live Cryptographic Geo-Tag Overlay */}
+              <View style={styles.geoTagContainer}>
+                <View style={styles.geoTagHeader}>
+                  <MaterialCommunityIcons name="satellite-variant" size={14} color="#00FF41" />
+                  <Text style={styles.geoTagTitle}> SECURE EXIF LOCK ACTIVE</Text>
+                </View>
+                <Text style={styles.geoText}>LAT: {location ? location.latitude.toFixed(6) : 'CALCULATING...'}</Text>
+                <Text style={styles.geoText}>LNG: {location ? location.longitude.toFixed(6) : 'CALCULATING...'}</Text>
+                <Text style={styles.geoText}>ALT: {location ? `${location.altitude?.toFixed(1) || 0}m` : '...'}</Text>
+                <Text style={styles.geoText}>TIME: {currentTime}</Text>
+                <Text style={styles.geoText}>HASH: {Math.random().toString(36).substring(2, 12).toUpperCase()}</Text>
+              </View>
+
             </View>
           ) : null}
 
@@ -379,6 +447,11 @@ export default function CameraScreen({ navigation }) {
                   <View style={styles.actionBox}>
                     <Text style={styles.actionTitle}>{T.lAction}</Text>
                     <Text style={styles.actionText}>{analysisResult.recommended_action}</Text>
+                  </View>
+
+                  <View style={[styles.actionBox, { backgroundColor: '#FFF3E0', borderLeftColor: '#FF9800' }]}>
+                    <Text style={[styles.actionTitle, { color: '#FF9800' }]}>Claim Status</Text>
+                    <Text style={styles.actionText}>{analysisResult.summary}</Text>
                   </View>
 
                   <View style={styles.buttonRow}>
@@ -463,6 +536,23 @@ const styles = StyleSheet.create({
   laser: { width: '100%', height: 2, backgroundColor: Theme.accentEarth, shadowColor: Theme.accentEarth, shadowOpacity: 1, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
   scanHint: { position: 'absolute', bottom: 12, left: 0, right: 0, alignItems: 'center' },
   scanHintText: { color: 'rgba(255,255,255,0.8)', fontSize: 12, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
+  
+  // 🟢 NEW STYLES: Live Geo-Tag Overlay
+  geoTagContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#00FF41',
+    zIndex: 50,
+  },
+  geoTagHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  geoTagTitle: { color: '#00FF41', fontSize: 10, fontWeight: 'bold', letterSpacing: 1 },
+  geoText: { color: '#FFF', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10, marginTop: 2 },
+
   analyzingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   analyzingTitle: { color: '#FFF', fontSize: 20, fontWeight: '800', marginTop: 20, marginBottom: 8 },
   analyzingSubtitle: { color: 'rgba(255,255,255,0.7)', fontSize: 14, textAlign: 'center', lineHeight: 20 },

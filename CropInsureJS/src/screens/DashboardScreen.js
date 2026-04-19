@@ -4,9 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Speech from 'expo-speech'; // 🟢 USING CRASH-PROOF OFFLINE VOICE
+import * as Speech from 'expo-speech';
+import * as Location from 'expo-location'; 
 import { LanguageContext } from '../context/LanguageContext'; 
 import { AgriContext } from '../context/AgriContext'; 
+
+// 🟢 ADDED SUPABASE IMPORT FOR HISTORY
+import { supabase } from '../lib/supabase'; 
 
 const { width } = Dimensions.get('window');
 
@@ -18,7 +22,8 @@ const Theme = {
   textMuted: '#8A9681',          
   accentEarth: '#D48C3E',        
   accentGreen: '#4A6B36',        
-  navDark: '#1A1D16',            
+  navDark: '#1A1D16', 
+  danger: '#D32F2F', // 🟢 ADDED DANGER COLOR FOR FRAUD           
 };
 
 const LANGUAGES = [
@@ -28,45 +33,9 @@ const LANGUAGES = [
 ];
 
 const TRANSLATIONS = {
-  0: { // ENGLISH
-    hello: "Hello", location: "Mangaluru, Karnataka", weather: "Partly Cloudy",
-    commodities: "Commodities", rice: "Rice", corn: "Corn", wheat: "Wheat",
-    financials: "Farmer's Financials", agriScore: "Verified AgriScore",
-    preApprovedLoan: "Pre-Approved Loan", kisanCredit: "Kisan Credit Available",
-    apply: "Apply", tasks: "Farmer's Tasks", seeAll: "See All ▾",
-    morningScan: "Morning Field Scan", scanSub: "Assess crop health & file claims",
-    highPriority: "High Priority", actionRequired: "Action Required",
-    listening: "Listening... (Hold to speak)", processing: "Processing your voice...",
-    activeClaims: "Active Claims", estPayout: "Est. Payout Value:",
-    claimAdvance: "Claim ₹50,000 Advance Now", aiVerified: "AI Verified", agentReview: "Agent Review (Processing)",
-    payout: "Payout", fundsReady: "Funds Ready for Payout", agentApproved: "Agent Approved"
-  },
-  1: { // HINDI
-    hello: "नमस्ते", location: "मंगलुरु, कर्नाटक", weather: "आंशिक रूप से बादल",
-    commodities: "फसलें", rice: "चावल", corn: "मक्का", wheat: "गेहूँ",
-    financials: "किसान वित्त", agriScore: "सत्यापित एग्रीस्कोर",
-    preApprovedLoan: "पूर्व-स्वीकृत ऋण", kisanCredit: "किसान क्रेडिट उपलब्ध",
-    apply: "आवेदन करें", tasks: "किसान के कार्य", seeAll: "सभी देखें ▾",
-    morningScan: "सुबह का खेत निरीक्षण", scanSub: "फसल स्वास्थ्य का आकलन करें",
-    highPriority: "उच्च प्राथमिकता", actionRequired: "कार्रवाई आवश्यक",
-    listening: "सुन रहा हूँ...", processing: "आवाज़ प्रोसेस हो रही है...",
-    activeClaims: "सक्रिय क्लेम", estPayout: "अनुमानित भुगतान:",
-    claimAdvance: "अभी ₹50,000 का अग्रिम क्लेम करें", aiVerified: "AI द्वारा सत्यापित", agentReview: "एजेंट समीक्षा (प्रक्रिया में)",
-    payout: "भुगतान", fundsReady: "भुगतान के लिए राशि तैयार", agentApproved: "एजेंट द्वारा स्वीकृत"
-  },
-  2: { // KANNADA
-    hello: "ನಮಸ್ಕಾರ", location: "ಮಂಗಳೂರು, ಕರ್ನಾಟಕ", weather: "ಭಾಗಶಃ ಮೋಡ",
-    commodities: "ಬೆಳೆಗಳು", rice: "ಅಕ್ಕಿ", corn: "ಜೋಳ", wheat: "ಗೋಧಿ",
-    financials: "ರೈತರ ಹಣಕಾಸು", agriScore: "ಪರಿಶೀಲಿಸಿದ ಅಗ್ರಿಸ್ಕೋರ್",
-    preApprovedLoan: "ಪೂರ್ವ-ಅನುಮೋದಿತ ಸಾಲ", kisanCredit: "ಕಿಸಾನ್ ಕ್ರೆಡಿಟ್ ಲಭ್ಯವಿದೆ",
-    apply: "ಅರ್ಜಿ ಸಲ್ಲಿಸಿ", tasks: "ರೈತರ ಕಾರ್ಯಗಳು", seeAll: "ಎಲ್ಲವನ್ನೂ ನೋಡಿ ▾",
-    morningScan: "ಬೆಳಗಿನ ಕ್ಷೇತ್ರ ತಪಾಸಣೆ", scanSub: "ಬೆಳೆ ಆರೋಗ್ಯವನ್ನು ನಿರ್ಣಯಿಸಿ",
-    highPriority: "ಹೆಚ್ಚಿನ ಆದ್ಯತೆ", actionRequired: "ಕ್ರಮ ಅಗತ್ಯವಿದೆ",
-    listening: "ಆಲಿಸುತ್ತಿದ್ದೇನೆ...", processing: "ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲಾಗುತ್ತಿದೆ...",
-    activeClaims: "ಸಕ್ರಿಯ ಕ್ಲೈಮ್‌ಗಳು", estPayout: "ಅಂದಾಜು ಪಾವತಿ:",
-    claimAdvance: "ಈಗ ₹50,000 ಮುಂಗಡವನ್ನು ಕ್ಲೈಮ್ ಮಾಡಿ", aiVerified: "AI ಪರಿಶೀಲಿಸಿದೆ", agentReview: "ಏಜೆಂಟ್ ವಿಮರ್ಶೆ (ಪ್ರಗತಿಯಲ್ಲಿದೆ)",
-    payout: "ಪಾವತಿ", fundsReady: "ಪಾವತಿಗೆ ಹಣ ಸಿದ್ಧವಾಗಿದೆ", agentApproved: "ಏಜೆಂಟ್ ಅನುಮೋದಿಸಿದ್ದಾರೆ"
-  }
+  0: { hello: "Hello", location: "Locating...", weather: "Fetching...", commodities: "Commodities", rice: "Rice", corn: "Corn", wheat: "Wheat", financials: "Farmer's Financials", agriScore: "Verified AgriScore", preApprovedLoan: "Pre-Approved Loan", kisanCredit: "Kisan Credit Available", apply: "Apply", tasks: "Farmer's Tasks", seeAll: "See All ▾", morningScan: "New Crop Scan", scanSub: "Identify disease & file claim", highPriority: "High Priority", actionRequired: "Action Required", listening: "Listening... (Hold to speak)", processing: "Processing your voice...", activeClaims: "Active Claims", estPayout: "Est. Payout Value:", claimAdvance: "Claim ₹50,000 Advance Now", aiVerified: "AI Verified", agentReview: "Agent Review (Processing)", payout: "Payout", fundsReady: "Funds Ready for Payout", agentApproved: "Agent Approved", claimHistory: "Claim History" },
+  1: { hello: "नमस्ते", location: "खोज रहा है...", weather: "ला रहा है...", commodities: "फसलें", rice: "चावल", corn: "मक्का", wheat: "गेहूँ", financials: "किसान वित्त", agriScore: "सत्यापित एग्रीस्कोर", preApprovedLoan: "पूर्व-स्वीकृत ऋण", kisanCredit: "किसान क्रेडिट उपलब्ध", apply: "आवेदन करें", tasks: "किसान के कार्य", seeAll: "सभी देखें ▾", morningScan: "नया फसल स्कैन", scanSub: "रोग की पहचान करें और क्लेम करें", highPriority: "उच्च प्राथमिकता", actionRequired: "कार्रवाई आवश्यक", listening: "सुन रहा हूँ...", processing: "आवाज़ प्रोसेस हो रही है...", activeClaims: "सक्रिय क्लेम", estPayout: "अनुमानित भुगतान:", claimAdvance: "अभी ₹50,000 का अग्रिम क्लेम करें", aiVerified: "AI द्वारा सत्यापित", agentReview: "एजेंट समीक्षा (प्रक्रिया में)", payout: "भुगतान", fundsReady: "भुगतान के लिए राशि तैयार", agentApproved: "एजेंट द्वारा स्वीकृत", claimHistory: "क्लेम इतिहास" },
+  2: { hello: "ನಮಸ್ಕಾರ", location: "ಹುಡುಕಲಾಗುತ್ತಿದೆ...", weather: "ತರಲಾಗುತ್ತಿದೆ...", commodities: "ಬೆಳೆಗಳು", rice: "ಅಕ್ಕಿ", corn: "ಜೋಳ", wheat: "ಗೋಧಿ", financials: "ರೈತರ ಹಣಕಾಸು", agriScore: "ಪರಿಶೀಲಿಸಿದ ಅಗ್ರಿಸ್ಕೋರ್", preApprovedLoan: "ಪೂರ್ವ-ಅನುಮೋದಿತ ಸಾಲ", kisanCredit: "ಕಿಸಾನ್ ಕ್ರೆಡಿಟ್ ಲಭ್ಯವಿದೆ", apply: "ಅರ್ಜಿ ಸಲ್ಲಿಸಿ", tasks: "ರೈತರ ಕಾರ್ಯಗಳು", seeAll: "ಎಲ್ಲವನ್ನೂ ನೋಡಿ ▾", morningScan: "ಹೊಸ ಬೆಳೆ ಸ್ಕ್ಯಾನ್", scanSub: "ರೋಗವನ್ನು ಗುರುತಿಸಿ ಮತ್ತು ಕ್ಲೈಮ್ ಮಾಡಿ", highPriority: "ಹೆಚ್ಚಿನ ಆದ್ಯತೆ", actionRequired: "ಕ್ರಮ ಅಗತ್ಯವಿದೆ", listening: "ಆಲಿಸುತ್ತಿದ್ದೇನೆ...", processing: "ಪ್ರಕ್ರಿಯೆಗೊಳಿಸಲಾಗುತ್ತಿದೆ...", activeClaims: "ಸಕ್ರಿಯ ಕ್ಲೈಮ್‌ಗಳು", estPayout: "ಅಂದಾಜು ಪಾವತಿ:", claimAdvance: "ಈಗ ₹50,000 ಮುಂಗಡವನ್ನು ಕ್ಲೈಮ್ ಮಾಡಿ", aiVerified: "AI ಪರಿಶೀಲಿಸಿದೆ", agentReview: "ಏಜೆಂಟ್ ವಿಮರ್ಶೆ (ಪ್ರಗತಿಯಲ್ಲಿದೆ)", payout: "ಪಾವತಿ", fundsReady: "ಪಾವತಿಗೆ ಹಣ ಸಿದ್ಧವಾಗಿದೆ", agentApproved: "ಏಜೆಂಟ್ ಅನುಮೋದಿಸಿದ್ದಾರೆ", claimHistory: "ಕ್ಲೈಮ್ ಇತಿಹಾಸ" }
 };
 
 export default function DashboardScreen({ navigation, route }) {
@@ -76,10 +45,18 @@ export default function DashboardScreen({ navigation, route }) {
 
   const { langIndex, setLangIndex } = useContext(LanguageContext);
   const { agriScore, loanTier } = useContext(AgriContext); 
+  const T = TRANSLATIONS[langIndex];
   
   const [isLangModalVisible, setLangModalVisible] = useState(false);
-  const [displayScore, setDisplayScore] = useState(0); 
   const [queryIndex, setQueryIndex] = useState(0);
+
+  // 🟢 ADDED SECRET TARGET SCORE
+  const [displayScore, setDisplayScore] = useState(0); 
+  const [targetScore, setTargetScore] = useState(300);
+
+  const [temperature, setTemperature] = useState('--');
+  const [weatherCondition, setWeatherCondition] = useState(T.weather);
+  const [cityName, setCityName] = useState(T.location);
 
   const newClaim = route.params?.claimData || null;
   const [showAgentWorkflow, setShowAgentWorkflow] = useState(false);
@@ -89,24 +66,77 @@ export default function DashboardScreen({ navigation, route }) {
   const [isListening, setIsListening] = useState(false);
   const [transcription, setTranscription] = useState('');
 
-  const T = TRANSLATIONS[langIndex];
+  const [claimHistory, setClaimHistory] = useState([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setCityName('GPS Denied');
+          return;
+        }
+
+        let location = await Location.getCurrentPositionAsync({});
+        const lat = location.coords.latitude;
+        const lon = location.coords.longitude;
+
+        const weatherKey = process.env.EXPO_PUBLIC_WEATHER_KEY || 'b4ce5ee9b9c3eb8d8158f4ed09dbfa0b';
+        const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherKey}&units=metric`);
+        const data = await response.json();
+
+        if (data.main) {
+          setTemperature(Math.round(data.main.temp));
+          setWeatherCondition(data.weather[0].main);
+          setCityName(data.name);
+        }
+      } catch (error) {
+        console.log("Weather fetch error", error);
+        setCityName("Offline Mode");
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    fetchHistory();
+    const uniqueChannelName = `mobile-history-${Date.now()}`;
+    const channel = supabase.channel(uniqueChannelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'claims' }, payload => {
+        fetchHistory();
+      }).subscribe();
+      
+    return () => { supabase.removeChannel(channel) };
+  }, []);
+
+  const fetchHistory = async () => {
+    setIsLoadingHistory(true);
+    const { data, error } = await supabase
+      .from('claims')
+      .select('*')
+      .order('id', { ascending: false })
+      .limit(5);
+    if (data) setClaimHistory(data);
+    setIsLoadingHistory(false);
+  };
+
+  // 🟢 UPDATED ANIMATION FOR SECRET DROP
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true })
     ]).start();
 
-    let start = 0;
-    const end = agriScore > 0 ? agriScore : 300; 
-    const duration = 1500; 
-    const incrementTime = 20; 
+    let start = displayScore;
+    const end = targetScore; 
+    const duration = start === 0 ? 1500 : 800; 
+    const incrementTime = 30; 
     const steps = duration / incrementTime;
-    const stepValue = end / steps;
+    const stepValue = (end - start) / steps;
 
     const timer = setInterval(() => {
       start += stepValue;
-      if (start >= end) {
+      if ((stepValue < 0 && start <= end) || (stepValue > 0 && start >= end) || stepValue === 0) {
         clearInterval(timer);
         setDisplayScore(end);
       } else {
@@ -115,7 +145,7 @@ export default function DashboardScreen({ navigation, route }) {
     }, incrementTime);
 
     return () => clearInterval(timer);
-  }, [agriScore]);
+  }, [targetScore]);
 
   useEffect(() => {
     if (newClaim && !claimApproved) {
@@ -145,7 +175,6 @@ export default function DashboardScreen({ navigation, route }) {
     }
   }, [newClaim?.timestamp]);
 
-  // 🟢 FAKE RECORDING LOGIC (Bulletproof UI)
   const startRecording = async () => {
     if (isListening) return; 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -168,7 +197,6 @@ export default function DashboardScreen({ navigation, route }) {
     await processHackathonAudio();
   };
 
-  // 🟢 OFFLINE SPEECH SYNTHESIS (Zero API Crashes)
   const processHackathonAudio = async () => {
     try {
       const langCode = LANGUAGES[langIndex].apiCode;
@@ -215,9 +243,7 @@ export default function DashboardScreen({ navigation, route }) {
       setTranscription(`"${userSaid}"`);
       setQueryIndex((prev) => (prev + 1) % 3);
 
-      // Instantly speak using the phone's native offline voice
       Speech.speak(replyText, { language: langCode, rate: 0.95 });
-
       setTimeout(() => setTranscription(''), 5000);
 
     } catch (error) {
@@ -246,7 +272,7 @@ export default function DashboardScreen({ navigation, route }) {
                 <Text style={styles.greeting}>{T.hello}, Francis</Text>
                 <View style={styles.locationRow}>
                   <Ionicons name="location-sharp" size={14} color={Theme.textMuted} />
-                  <Text style={styles.locationText}>{T.location}</Text>
+                  <Text style={styles.locationText}>{cityName}</Text>
                 </View>
               </View>
               <TouchableOpacity style={styles.notificationBtn} activeOpacity={0.7} onPress={() => navigation.navigate('Notifications')}>
@@ -257,10 +283,10 @@ export default function DashboardScreen({ navigation, route }) {
 
             <View style={styles.weatherBlock}>
               <View>
-                <Text style={styles.hugeTemp}>31°</Text>
+                <Text style={styles.hugeTemp}>{temperature}°</Text>
                 <View style={styles.weatherConditionRow}>
-                  <Ionicons name="partly-sunny" size={18} color={Theme.accentEarth} />
-                  <Text style={styles.weatherCondition}>{T.weather}</Text>
+                  <Ionicons name={weatherCondition.includes('Rain') ? "rainy" : weatherCondition.includes('Cloud') ? "cloudy" : "partly-sunny"} size={18} color={Theme.accentEarth} />
+                  <Text style={styles.weatherCondition}>{weatherCondition}</Text>
                 </View>
               </View>
               
@@ -301,16 +327,27 @@ export default function DashboardScreen({ navigation, route }) {
 
           <Text style={styles.sectionTitle}>{T.financials}</Text>
 
-          <TouchableOpacity style={styles.scoreCard} activeOpacity={0.9} onPress={() => { Haptics.selectionAsync(); navigation.navigate('AgriScore'); }}>
+          {/* 🟢 SECRET BUTTON ADDED HERE */}
+          <View style={styles.scoreCard}>
             <View style={styles.scoreHeader}>
-              <Text style={styles.scoreTitle}>{T.agriScore}</Text>
+              <TouchableOpacity activeOpacity={1} onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                setTargetScore(150);
+              }}>
+                <Text style={styles.scoreTitle}>{T.agriScore}</Text>
+              </TouchableOpacity>
               <View><MaterialCommunityIcons name="chevron-right" size={24} color={Theme.textMuted} /></View>
             </View>
+            
             <View style={styles.scoreDisplayRow}>
-              <Text style={styles.scoreHuge}>{displayScore}</Text>
+              <Text style={[styles.scoreHuge, targetScore < 200 && {color: Theme.danger}]}>{displayScore}</Text>
               <Text style={styles.scoreSub}>/ 900</Text>
             </View>
             
+            {targetScore < 200 && (
+              <Text style={{color: Theme.danger, fontWeight: '700', marginTop: 4}}>⚠️ Account Flagged for Fraud</Text>
+            )}
+
             <View style={styles.divider} />
             
             <View style={styles.loanOfferRow}>
@@ -325,7 +362,7 @@ export default function DashboardScreen({ navigation, route }) {
                 <Text style={styles.loanApplyText}>{T.apply}</Text>
               </TouchableOpacity>
             </View>
-          </TouchableOpacity>
+          </View>
 
           {newClaim ? (
             <>
@@ -419,6 +456,42 @@ export default function DashboardScreen({ navigation, route }) {
                 </View>
               </TouchableOpacity>
             </>
+          )}
+
+          {/* 🟢 CLAIM HISTORY DATA DISPLAYED BELOW THE TASKS/SCANNER */}
+          <View style={[styles.taskHeaderRow, { marginTop: 16 }]}>
+            <Text style={styles.sectionTitle}>{T.claimHistory}</Text>
+          </View>
+          
+          {isLoadingHistory ? (
+             <ActivityIndicator size="large" color={Theme.accentEarth} style={{marginBottom: 24}}/>
+          ) : claimHistory.length > 0 ? (
+            claimHistory.map((claim) => (
+              <View key={claim.id} style={[styles.taskCard, { borderColor: claim.status === 'approved' ? Theme.accentGreen : claim.status === 'rejected' ? '#D32F2F' : Theme.accentEarth, borderWidth: 1, padding: 16, marginBottom: 16 }]}>
+                <View style={[styles.taskCardHeader, { marginBottom: 12 }]}>
+                  <View style={[styles.taskIconBadge, { backgroundColor: claim.status === 'approved' ? 'rgba(74, 107, 54, 0.15)' : claim.status === 'rejected' ? 'rgba(211, 47, 47, 0.1)' : 'rgba(212, 140, 62, 0.15)' }]}>
+                    <MaterialCommunityIcons name={claim.status === 'approved' ? "check-decagram" : claim.status === 'rejected' ? "alert-circle" : "clock-outline"} size={20} color={claim.status === 'approved' ? Theme.accentGreen : claim.status === 'rejected' ? '#D32F2F' : Theme.accentEarth} />
+                  </View>
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={styles.taskCardTitle}>{claim.crop || 'Crop'} Damage</Text>
+                    <Text style={styles.taskCardSub}>ID: #CR-{claim.id.toString().padStart(4, '0')} • {claim.pathogen || 'Pending'}</Text>
+                  </View>
+                </View>
+                
+                <View style={[styles.divider, { marginVertical: 12 }]} />
+                
+                <View style={styles.claimEstRow}>
+                  <Text style={styles.claimEstText}>
+                    {claim.status === 'approved' ? "Payout Authorized" : claim.status === 'rejected' ? "Claim Denied" : "Pending Review"}
+                  </Text>
+                  <Text style={[styles.claimEstValue, { color: claim.status === 'approved' ? Theme.accentGreen : claim.status === 'rejected' ? '#D32F2F' : Theme.textDark }]}>
+                    ₹{claim.estimated_payout?.toLocaleString() || '0'}
+                  </Text>
+                </View>
+              </View>
+            ))
+          ) : (
+             <Text style={{textAlign: 'center', color: Theme.textMuted, marginBottom: 24}}>No past claims found.</Text>
           )}
 
         </Animated.ScrollView>
@@ -597,13 +670,6 @@ const styles = StyleSheet.create({
   taskFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   taskFooterItem: { flexDirection: 'row', alignItems: 'center' },
   taskFooterText: { fontSize: 12, fontWeight: '700', color: Theme.textDark, marginLeft: 6 },
-  timelineContainer: { marginTop: 8, marginBottom: 4 },
-  timelineStep: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
-  timelineLine: { width: 2, height: 16, backgroundColor: Theme.accentGreen, marginLeft: 7, marginVertical: 2 },
-  timelineLinePending: { width: 2, height: 16, backgroundColor: '#E0E0E0', marginLeft: 7, marginVertical: 2 },
-  timelineTextDone: { fontSize: 13, fontWeight: '700', color: Theme.textDark, marginLeft: 12 },
-  timelineTextActive: { fontSize: 13, fontWeight: '800', color: Theme.accentEarth, marginLeft: 12 },
-  timelineTextPending: { fontSize: 13, fontWeight: '500', color: Theme.textMuted, marginLeft: 12 },
   claimEstRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   claimEstText: { fontSize: 14, color: Theme.textMuted, fontWeight: '600' },
   claimEstValue: { fontSize: 18, color: Theme.accentGreen, fontWeight: '800' },
@@ -619,5 +685,12 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', color: Theme.textDark },
   modalOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1EFE8' },
   modalOptionActive: { backgroundColor: 'rgba(212, 140, 62, 0.05)', borderRadius: 12, paddingHorizontal: 12, marginHorizontal: -12, borderBottomWidth: 0 },
-  modalOptionText: { fontSize: 16, color: Theme.textDark, fontWeight: '600' }
+  modalOptionText: { fontSize: 16, color: Theme.textDark, fontWeight: '600' },
+  timelineContainer: { marginTop: 8 },
+  timelineStep: { flexDirection: 'row', alignItems: 'center' },
+  timelineLine: { width: 2, height: 20, backgroundColor: Theme.accentGreen, marginLeft: 7, marginVertical: 4 },
+  timelineLinePending: { width: 2, height: 20, backgroundColor: '#EFECE4', marginLeft: 7, marginVertical: 4 },
+  timelineTextDone: { fontSize: 13, color: Theme.textDark, fontWeight: '700', marginLeft: 8 },
+  timelineTextActive: { fontSize: 13, color: Theme.accentEarth, fontWeight: '700', marginLeft: 8 },
+  timelineTextPending: { fontSize: 13, color: Theme.textMuted, fontWeight: '500', marginLeft: 8 }
 });
