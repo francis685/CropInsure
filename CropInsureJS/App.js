@@ -1,11 +1,12 @@
-import React, { useEffect } from 'react'; // 🟢 Added useEffect
-import { Image } from 'react-native'; // 🟢 Added Image
+import React, { useEffect, useState } from 'react';
+import { Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { LanguageProvider } from './src/context/LanguageContext';
-import { AgriProvider } from './src/context/AgriContext'; 
+import { AgriProvider } from './src/context/AgriContext';
+import { supabase } from './src/lib/supabase';
 
 import SplashScreen from './src/screens/SplashScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
@@ -24,26 +25,45 @@ import GeoFenceAuditScreen from './src/screens/GeoFenceAuditScreen';
 const Stack = createNativeStackNavigator();
 
 export default function App() {
-  
+  const [isResolvingSession, setIsResolvingSession] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
+
   // 🟢 THE FIX: Pre-fetch images so they load instantly with zero lag
   useEffect(() => {
     const imagesToCache = [
       'https://images.unsplash.com/photo-1500382017468-9049fed747ef?ixlib=rb-4.0.3&auto=format&fit=crop&w=1080&q=80',
       'https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=800&auto=format&fit=crop'
     ];
-    
+
     // This tells the phone to download the images quietly in the background
     // the moment the app opens, so they are ready when the user navigates.
     imagesToCache.forEach(url => Image.prefetch(url));
   }, []);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setHasSession(!!session);
+      setIsResolvingSession(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasSession(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (isResolvingSession) {
+    return <SplashScreen />;
+  }
 
   return (
     <AgriProvider>
       <LanguageProvider>
         <NavigationContainer>
           <StatusBar style="light" />
-          <Stack.Navigator 
-            initialRouteName="Splash"
+          <Stack.Navigator
+            initialRouteName={hasSession ? 'Dashboard' : 'Onboarding'}
             screenOptions={{ headerShown: false, animation: 'fade' }}
           >
             <Stack.Screen name="Splash" component={SplashScreen} />

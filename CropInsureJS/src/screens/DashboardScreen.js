@@ -32,6 +32,10 @@ const LANGUAGES = [
   { code: 'KN', name: 'ಕನ್ನಡ (Kannada)', apiCode: 'kn-IN' }
 ];
 
+const maskPhone = (phone) => phone.length > 4
+  ? '•'.repeat(phone.length - 4) + phone.slice(-4)
+  : phone;
+
 const TRANSLATIONS = {
   0: { hello: "Hello", location: "Locating...", weather: "Fetching...", commodities: "Commodities", rice: "Rice", corn: "Corn", wheat: "Wheat", financials: "Farmer's Financials", agriScore: "Verified AgriScore", preApprovedLoan: "Pre-Approved Loan", kisanCredit: "Kisan Credit Available", apply: "Apply", tasks: "Farmer's Tasks", seeAll: "See All ▾", morningScan: "New Crop Scan", scanSub: "Identify disease & file claim", highPriority: "High Priority", actionRequired: "Action Required", listening: "Listening... (Hold to speak)", processing: "Processing your voice...", activeClaims: "Active Claims", estPayout: "Est. Payout Value:", claimAdvance: "Claim ₹50,000 Advance Now", aiVerified: "AI Verified", agentReview: "Agent Review (Processing)", payout: "Payout", fundsReady: "Funds Ready for Payout", agentApproved: "Agent Approved", claimHistory: "Claim History" },
   1: { hello: "नमस्ते", location: "खोज रहा है...", weather: "ला रहा है...", commodities: "फसलें", rice: "चावल", corn: "मक्का", wheat: "गेहूँ", financials: "किसान वित्त", agriScore: "सत्यापित एग्रीस्कोर", preApprovedLoan: "पूर्व-स्वीकृत ऋण", kisanCredit: "किसान क्रेडिट उपलब्ध", apply: "आवेदन करें", tasks: "किसान के कार्य", seeAll: "सभी देखें ▾", morningScan: "नया फसल स्कैन", scanSub: "रोग की पहचान करें और क्लेम करें", highPriority: "उच्च प्राथमिकता", actionRequired: "कार्रवाई आवश्यक", listening: "सुन रहा हूँ...", processing: "आवाज़ प्रोसेस हो रही है...", activeClaims: "सक्रिय क्लेम", estPayout: "अनुमानित भुगतान:", claimAdvance: "अभी ₹50,000 का अग्रिम क्लेम करें", aiVerified: "AI द्वारा सत्यापित", agentReview: "एजेंट समीक्षा (प्रक्रिया में)", payout: "भुगतान", fundsReady: "भुगतान के लिए राशि तैयार", agentApproved: "एजेंट द्वारा स्वीकृत", claimHistory: "क्लेम इतिहास" },
@@ -68,6 +72,8 @@ export default function DashboardScreen({ navigation, route }) {
 
   const [claimHistory, setClaimHistory] = useState([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [farmerId, setFarmerId] = useState(null);
+  const [farmerPhone, setFarmerPhone] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -82,7 +88,12 @@ export default function DashboardScreen({ navigation, route }) {
         const lat = location.coords.latitude;
         const lon = location.coords.longitude;
 
-        const weatherKey = process.env.EXPO_PUBLIC_WEATHER_KEY || 'b4ce5ee9b9c3eb8d8158f4ed09dbfa0b';
+        const weatherKey = process.env.EXPO_PUBLIC_WEATHER_KEY;
+        if (!weatherKey) {
+          setCityName("Offline Mode");
+          return;
+        }
+
         const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherKey}&units=metric`);
         const data = await response.json();
 
@@ -99,21 +110,31 @@ export default function DashboardScreen({ navigation, route }) {
   }, []);
 
   useEffect(() => {
-    fetchHistory();
-    const uniqueChannelName = `mobile-history-${Date.now()}`;
-    const channel = supabase.channel(uniqueChannelName)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'claims' }, payload => {
-        fetchHistory();
-      }).subscribe();
-      
-    return () => { supabase.removeChannel(channel) };
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setFarmerId(user?.id ?? null);
+      setFarmerPhone(user?.phone ?? null);
+    });
   }, []);
 
-  const fetchHistory = async () => {
+  useEffect(() => {
+    if (!farmerId) return;
+
+    fetchHistory(farmerId);
+    const uniqueChannelName = `mobile-history-${Date.now()}`;
+    const channel = supabase.channel(uniqueChannelName)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'claims', filter: `farmer_id=eq.${farmerId}` }, payload => {
+        fetchHistory(farmerId);
+      }).subscribe();
+
+    return () => { supabase.removeChannel(channel) };
+  }, [farmerId]);
+
+  const fetchHistory = async (forFarmerId) => {
     setIsLoadingHistory(true);
     const { data, error } = await supabase
       .from('claims')
       .select('*')
+      .eq('farmer_id', forFarmerId)
       .order('id', { ascending: false })
       .limit(5);
     if (data) setClaimHistory(data);
@@ -269,7 +290,7 @@ export default function DashboardScreen({ navigation, route }) {
           <View style={styles.header}>
             <View style={styles.headerTop}>
               <View>
-                <Text style={styles.greeting}>{T.hello}, Francis</Text>
+                <Text style={styles.greeting}>{T.hello}{farmerPhone ? `, ${maskPhone(farmerPhone)}` : ''}</Text>
                 <View style={styles.locationRow}>
                   <Ionicons name="location-sharp" size={14} color={Theme.textMuted} />
                   <Text style={styles.locationText}>{cityName}</Text>

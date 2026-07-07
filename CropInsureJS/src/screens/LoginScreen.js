@@ -9,14 +9,16 @@ import {
   KeyboardAvoidingView, 
   Platform, 
   Dimensions, 
-  ImageBackground, 
+  ImageBackground,
   Alert,
-  ScrollView
+  ScrollView,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { supabase } from '../lib/supabase';
 
 const { width } = Dimensions.get('window');
 
@@ -31,9 +33,10 @@ const Theme = {
 };
 
 export default function LoginScreen({ navigation }) {
-  const [step, setStep] = useState(1); 
+  const [step, setStep] = useState(1);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
@@ -45,24 +48,56 @@ export default function LoginScreen({ navigation }) {
     ]).start();
   }, []);
 
-  const handleNext = () => {
+  const handleNext = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
+    if (isSubmitting) return;
+
     if (step === 1) {
       if (phone.length < 10) {
         Alert.alert("Invalid Number", "Please enter a valid 10-digit phone number.");
         return;
       }
-      setStep(2); 
-    } else {
-      if (otp === '1234') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        // 🟢 CHANGED: Now routes to Verification instead of Dashboard
-        navigation.replace('Verification'); 
-      } else {
+
+      setIsSubmitting(true);
+      const { error } = await supabase.auth.signInWithOtp({ phone: `+91${phone}` });
+      setIsSubmitting(false);
+
+      if (error) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("Authentication Failed", "For this demo, please use the OTP: 1234");
+        Alert.alert("Could Not Send OTP", error.message);
+        return;
       }
+
+      setStep(2);
+    } else {
+      if (otp.length < 4) {
+        Alert.alert("Invalid OTP", "Please enter the OTP you received.");
+        return;
+      }
+
+      setIsSubmitting(true);
+      const { data, error } = await supabase.auth.verifyOtp({
+        phone: `+91${phone}`,
+        token: otp,
+        type: 'sms',
+      });
+
+      if (error) {
+        setIsSubmitting(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert("Authentication Failed", error.message);
+        return;
+      }
+
+      const { data: farmer } = await supabase
+        .from('farmers')
+        .select('is_verified')
+        .eq('id', data.user.id)
+        .single();
+
+      setIsSubmitting(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      navigation.replace(farmer?.is_verified ? 'Dashboard' : 'Verification');
     }
   };
 
@@ -123,19 +158,25 @@ export default function LoginScreen({ navigation }) {
                     <Ionicons name="lock-closed-outline" size={20} color="#A0A0A0" style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
-                      placeholder="Enter OTP (Hint: 1234)"
+                      placeholder="Enter OTP"
                       placeholderTextColor="#A0A0A0"
                       keyboardType="numeric"
-                      maxLength={4}
+                      maxLength={6}
                       value={otp}
                       onChangeText={setOtp}
                     />
                   </View>
                 )}
 
-                <TouchableOpacity activeOpacity={0.8} onPress={handleNext} style={styles.mainBtn}>
-                  <Text style={styles.mainBtnText}>{step === 1 ? 'Get OTP' : 'Verify & Login'}</Text>
-                  <Ionicons name="arrow-forward" size={20} color="#FFF" />
+                <TouchableOpacity activeOpacity={0.8} onPress={handleNext} style={styles.mainBtn} disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <>
+                      <Text style={styles.mainBtnText}>{step === 1 ? 'Get OTP' : 'Verify & Login'}</Text>
+                      <Ionicons name="arrow-forward" size={20} color="#FFF" />
+                    </>
+                  )}
                 </TouchableOpacity>
 
                 {step === 2 && (

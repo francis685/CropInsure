@@ -2,9 +2,12 @@ import 'react-native-url-polyfill/auto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
-// Your exact URL and Key from your project!
-const supabaseUrl = 'https://gvbghmrifckwgqqakmro.supabase.co';
-const supabaseAnonKey = 'sb_publishable_lljMaof3dEU9rzocvjOj7w_rV7PCfnS';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY in .env');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

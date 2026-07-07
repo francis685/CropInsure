@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, Animated, ActivityIndicator, ImageBackground, KeyboardAvoidingView, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { AgriContext } from '../context/AgriContext';
+import { supabase } from '../lib/supabase';
 
 const Theme = {
   bgOverlayTop: 'rgba(212, 140, 62, 0.6)',
@@ -17,7 +19,8 @@ const Theme = {
 };
 
 export default function VerificationScreen({ navigation }) {
-  const [step, setStep] = useState(1); 
+  const { verifyLand } = useContext(AgriContext);
+  const [step, setStep] = useState(1);
   
   // Identity States
   const [idNumber, setIdNumber] = useState('');
@@ -69,11 +72,25 @@ export default function VerificationScreen({ navigation }) {
     setTimeout(() => setLoadingText("Extracting Spatial Polygon..."), 1200);
     setTimeout(() => setLoadingText("Cross-referencing eKYC Owner..."), 2400);
     
-    setTimeout(() => {
+    setTimeout(async () => {
       setIsLandVerifying(false);
       setIsLandVerified(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => setStep(3), 1000); 
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { error } = await supabase.from('land_records').insert({
+          farmer_id: user.id,
+          survey_number: surveyNumber,
+          area_acres: 2.5,
+          verified: true,
+          verified_at: new Date().toISOString(),
+        });
+        if (error) console.warn('VerificationScreen: failed to save land record:', error.message);
+      }
+      await verifyLand();
+
+      setTimeout(() => setStep(3), 1000);
     }, 3500);
   };
 

@@ -12,8 +12,11 @@ import * as Location from 'expo-location';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LanguageContext } from '../context/LanguageContext';
-import { supabase } from '../lib/supabase'; 
-import { decode } from 'base64-arraybuffer'; 
+import { AgriContext } from '../context/AgriContext';
+import { supabase } from '../lib/supabase';
+import { decode } from 'base64-arraybuffer';
+
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || 'http://172.17.4.249:8000';
 
 const { width } = Dimensions.get('window');
 
@@ -41,7 +44,8 @@ const TRANSLATIONS = {
 
 export default function CameraScreen({ navigation }) {
   const { langIndex = 0 } = useContext(LanguageContext) || {};
-  const T = TRANSLATIONS[0]; 
+  const { agriScore = 300, recordAIHealthScan } = useContext(AgriContext) || {};
+  const T = TRANSLATIONS[0];
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef(null);
@@ -51,7 +55,8 @@ export default function CameraScreen({ navigation }) {
   const [analysisResult, setAnalysisResult] = useState(null);
   const [currentStep, setCurrentStep]   = useState('capture'); 
   const [captureFlash, setCaptureFlash] = useState(false);
-  const [uploadedImageUrl, setUploadedImageUrl] = useState(null); 
+  const [uploadedImageUrl, setUploadedImageUrl] = useState(null);
+  const [claimId, setClaimId] = useState(null);
 
   // 🟢 NEW STATE: Live GPS and Cryptographic Time Hash
   const [location, setLocation] = useState(null);
@@ -193,18 +198,21 @@ export default function CameraScreen({ navigation }) {
       setUploadedImageUrl(publicUrl); 
       console.log("☁️ Uploaded! Image URL:", publicUrl);
 
+      const { data: { user } } = await supabase.auth.getUser();
+
       console.log("2️⃣ Sending Data to Python Fraud Engine...");
-      const response = await fetch('http://192.168.50.174:8000/api/analyze-crop', {
+      const response = await fetch(`${BACKEND_URL}/api/analyze-crop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           image_url: publicUrl,
-          farmer_phone: "1234567890",
+          farmer_id: user?.id,
+          farmer_phone: user?.phone || "Unknown",
           lat: locationData.latitude,
           lng: locationData.longitude,
           temp: weatherData.temp,
           weather_condition: weatherData.condition,
-          farmer_score: 300 
+          farmer_score: agriScore
         })
       });
 
@@ -219,6 +227,7 @@ export default function CameraScreen({ navigation }) {
         finalResult.summary = `Status: ${backendData.verification.waiting_period}. \n\n${finalResult.summary}`;
       }
 
+      setClaimId(backendData.claim_id ?? null);
       setAnalysisResult(finalResult);
       setCurrentStep('result');
       setIsAnalyzing(false);
@@ -240,6 +249,7 @@ export default function CameraScreen({ navigation }) {
   const resetCapture = () => {
     setPhotos([]);
     setAnalysisResult(null);
+    setClaimId(null);
     setCurrentStep('capture');
     setIsAnalyzing(false);
     resultFadeAnim.setValue(0);
@@ -249,34 +259,34 @@ export default function CameraScreen({ navigation }) {
 
   const handleFileClaim = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    
-    try {
-      const { data, error } = await supabase.from('claims').insert([{
-        crop: analysisResult.crop_type,
-        pathogen: analysisResult.disease_name,
-        damage_percentage: analysisResult.damage_percentage,
-        recommended_action: analysisResult.recommended_action,
-        estimated_payout: analysisResult.estimated_payout,
-        image_url: uploadedImageUrl, 
-        status: 'pending'
-      }]);
 
-      if (error) {
-        console.error("Supabase Error:", error);
-        Alert.alert("Database Error", "Failed to save claim.");
-        return;
+    try {
+      // The backend already created this claim row (status='analyzed') when it ran the
+      // Gemini analysis. Filing the claim here just confirms it for human review rather
+      // than inserting a second, duplicate row.
+      if (claimId) {
+        const { error } = await supabase.from('claims').update({ status: 'pending' }).eq('id', claimId);
+        if (error) {
+          console.error("Supabase Error:", error);
+          Alert.alert("Database Error", "Failed to submit claim.");
+          return;
+        }
       }
-      
-      console.log("✅ Successfully saved claim to Supabase Database!");
+
+      console.log("✅ Successfully filed claim!");
+
+      if (recordAIHealthScan) {
+        await recordAIHealthScan(analysisResult.disease_detected);
+      }
 
       navigation.navigate('Dashboard', {
         claimData: {
           photos: photos.map(p => p.uri),
-          analysisResult: analysisResult, 
-          timestamp: new Date().toISOString(), 
+          analysisResult: analysisResult,
+          timestamp: new Date().toISOString(),
         }
       });
-      
+
     } catch (err) {
       console.error("Try/Catch Error:", err);
     }
